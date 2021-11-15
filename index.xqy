@@ -1,7 +1,10 @@
 xquery version "1.0-ml";
 import module namespace search = "http://marklogic.com/appservices/search" at
 "/MarkLogic/appservices/search/search.xqy";
-declare variable $facet-size as xs:integer := 8;
+
+import module namespace adv = "http://marklogic.com/MLU/search-app/advanced" at "modules/advanced-lib.xqy";
+declare variable $facet-size as xs:integer := 10;
+
 declare function local:result-controller()
 {
 	if(xdmp:get-request-field("q"))
@@ -98,87 +101,104 @@ declare function local:description($article)
 
 
 
-declare variable $options :=
-	<search:options xmlns="http://marklogic.com/appservices/search">
+declare variable $options := <search:options xmlns="http://marklogic.com/appservices/search">
+	<search:constraint name="Author">
+		<range type="xs:string" collation="http://marklogic.com/collation/en/S1/T00BB/AS">
+		<element  name="LastName"/>
+			<facet-option>limit=20</facet-option>
+			<facet-option>frequency-order</facet-option>
+			<facet-option>descending</facet-option>
+		</range>
+	</search:constraint>
+	<search:constraint name="Year">
+		<search:range type="xs:gYear">
+	
+			<search:bucket ge='2020' name="2020s">2020 - Present</search:bucket>
+			<search:bucket lt='2020' ge='2018' name="2018s">2018 - 2019</search:bucket>
+			<search:bucket lt='2018' ge='2015' name="2015s">2015 - 2017</search:bucket>
+			<search:bucket lt='2015' ge='2010' name="2010s">2010 - 2014</search:bucket>
+			<search:bucket lt='2010' ge='2000' name="2000s">2000 - 2009</search:bucket>
+			<search:bucket lt='2000' name="1999s">before 2000</search:bucket>
+			<search:field  name="neededYear"/>
+			<facet-option>limit=10</facet-option>
+			<facet-option>descending</facet-option>
+		</search:range>
+	</search:constraint>
 
-		<search:constraint name="Author">
-			<range type="xs:string" collation="http://marklogic.com/collation/en/S1/T00BB/AS">
-			<element  name="LastName"/>
-				<facet-option>limit=20</facet-option>
-				<facet-option>frequency-order</facet-option>
-				<facet-option>descending</facet-option>
-			</range>
-		</search:constraint>
+        <constraint name="Status">
+            <range type="xs:string" collation="http://marklogic.com/collation/en/S1" facet="true">
+                <attribute name="Status"/>
+                <element name="MedlineCitation"/>
+                <facet-option>ascending</facet-option>
+            </range>
+        </constraint>    
 
-		<search:constraint name="Year">
-			<search:range type="xs:gYear">
-				<search:bucket ge='2020' name="2020s">2020 - Present</search:bucket>
-				<search:bucket lt='2020' ge='2018' name="2018s">2018 - 2019</search:bucket>
-				<search:bucket lt='2018' ge='2015' name="2015s">2015 - 2017</search:bucket>
-				<search:bucket lt='2015' ge='2010' name="2010s">2010 - 2014</search:bucket>
-				<search:bucket lt='2010' ge='2000' name="2000s">2000 - 2009</search:bucket>
-				<search:bucket lt='2000' name="1999s">before 2000</search:bucket>
-				<search:field  name="neededYear"/>
-				<facet-option>limit=10</facet-option>
-				<facet-option>descending</facet-option>
-			</search:range>
-		</search:constraint>
+		<constraint name="Title">
+            <range type="xs:string" collation="http://marklogic.com/collation/en/S1/AS/T00BB" facet="false">
+                <element name="Title"/>
+            </range>
+        </constraint>     
+	
+	<transform-results apply="snippet">
+		<preferred-elements>
+			<element name="ArticleTitle"/>
+		</preferred-elements>
+	</transform-results>
+
+	<search:operator name="sort">
+
+		<search:state name="relevance">
+			<search:sort-order direction="descending">
+				<search:score/>
+			</search:sort-order>
+		</search:state>
+
+		<search:state name="newest">
+
+			<search:sort-order direction="descending" type="xs:gYear" >
+				<field  name="neededYear"/>
+			</search:sort-order>
 		
-		<transform-results apply="snippet">
-			<preferred-elements>
+			<search:sort-order>
+				<search:score/>
+			</search:sort-order>
+
+		</search:state>
+
+
+		<search:state name="oldest">
+
+			<search:sort-order direction="ascending" type="xs:gYear" >				
+				<field  name="neededYear"/>
+			</search:sort-order>
+
+			<search:sort-order>
+				<search:score/>
+			</search:sort-order>
+		
+		</search:state>
+
+		<search:state name="ArticleTitle">
+			<search:sort-order direction="ascending" type="xs:string" collation="http://marklogic.com/collation/en/S1/AS/T00BB"  facet="false">
 				<element name="ArticleTitle"/>
-			</preferred-elements>
-		</transform-results>
-
-		<search:operator name="sort">
-
-			<search:state name="relevance">
-				<search:sort-order direction="descending">
-					<search:score/>
-				</search:sort-order>
-			</search:state>
-
-			<search:state name="newest">
-				<search:sort-order direction="descending" type="xs:gYear" >
-					<field  name="neededYear"/>
-				</search:sort-order>
-				<search:sort-order>
-					<search:score/>
-				</search:sort-order>
-			</search:state>
+			</search:sort-order>
+			<search:sort-order>
+				<search:score/>
+			</search:sort-order>
+		</search:state>
+	</search:operator>
+</search:options>;
 
 
-			<search:state name="oldest">
-				<search:sort-order direction="ascending" type="xs:gYear" >				
-					<field  name="neededYear"/>
-				</search:sort-order>
-				<search:sort-order>
-					<search:score/>
-				</search:sort-order>
-			</search:state>
+declare variable $q-text := 
+  let $q := if(xdmp:get-request-field("advanced"))
+            then adv:advanced-q()
+            else xdmp:get-request-field("q", "sort:ArticleTitle")
+  let $q := local:add-sort($q)
+  return $q;
 
-
-			<search:state name="Title">
-				<search:sort-order direction="ascending" type="xs:string">
-					<search:element name="Title"/>
-				</search:sort-order>
-				<search:sort-order>
-					<search:score/>
-				</search:sort-order>
-			</search:state>
-
-
-		</search:operator>
-	</search:options>;
-
-
-
-declare variable $results :=
-
-	let $q := xdmp:get-request-field("q", "sort:Title")
-	let $q := local:add-sort($q)
-	return
-		search:search($q, $options, xs:unsignedLong(xdmp:get-request-field("start","1")));
+declare variable $results := 
+		search:search($q-text, $options, xs:unsignedLong(xdmp:get-request-field("start","1")));
 
 
 
@@ -479,16 +499,17 @@ xdmp:set-response-content-type("text/html; charset=utf-8"),
 			<form name="form1" method="get" action="index.xqy">
 				<div class="field has-addons">
 					<div class="control">
-						<input class="input" type="text" name="q" id="q" size="50" value="{local:add-sort(xdmp:get-request-field("q"))}"/>
+						<input class="input" type="text" name="q" id="q" size="50" value="{$q-text}"/>
 					</div>
 					<div class="control">
 						<button class="button" style="background-color:hsl(204, 86%, 53%); color:white;" type="submit" id="submitbtn" name="submitbtn">
 							search
 						</button>
+						    <a href="advanced.xqy">advanced search</a>
 					</div>
 				</div>
 				<div id="detaildiv">
-					{local:result-controller() }  	
+					{local:search-results()} 
 				</div>
 			</form>
 		</div>
