@@ -226,7 +226,7 @@ declare function local:sort-controller(){
 
 	let $order := fn:replace(
 		fn:substring-after(
-			fn:tokenize(xdmp:get-request-field("q","sort:Title"), " ")[fn:contains(.,"sort")],"sort:"
+			fn:tokenize(xdmp:get-request-field("q","sort:ArticleTitle"), " ")[fn:contains(.,"sort")],"sort:"
 		),"[()]",""
 	)
 	return
@@ -246,7 +246,7 @@ declare function local:sort-options() {
 		<option value="relevance">relevance</option>
 		<option value="newest">newest</option>
 		<option value="oldest">oldest</option>
-		<option value="Title">title</option>
+		<option value="ArticleTitle">article title</option>
 	</options>
 
 	let $newsortoptions :=
