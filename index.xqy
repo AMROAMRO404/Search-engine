@@ -416,11 +416,11 @@ declare function local:facets()
 							<div class="facet-hidden" id="{$facet-name}">{$facet-items[position() gt $facet-size]}</div>,
 							<div class="facet-toggle" id="{$facet-name}_more">
 								<img src="images/checkblank.gif"/>
-								<a href="javascript:toggle('{$facet-name}');" class="black">more...</a>
+								<a href="javascript:toggle('{$facet-name}');"  style="color:black;font-size:16px;"><strong>more...</strong></a>
 							</div>,
 							<div class="facet-toggle-hidden" id="{$facet-name}_less">
 								<img src="images/checkblank.gif"/>
-								<a href="javascript:toggle('{$facet-name}');" class="black">less...</a>
+								<a href="javascript:toggle('{$facet-name}');" style="color:black;font-size:16px;"><strong>less...</strong></a>
 							</div>
 						)
 						

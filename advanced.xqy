@@ -46,6 +46,7 @@ xdmp:set-response-content-type("text/html; charset=utf-8"),
   </div>
   <div style="padding-top:50px;width: 50%;display: block;margin-left: auto;margin-right: auto;s">
     <form name="formadv" method="get" action="index.xqy" id="formadv">
+      <input type="hidden" name="advanced" value="advanced"/>
       <label><strong>Search for:</strong></label>
       <div style="white-space: nowrap;">
         
