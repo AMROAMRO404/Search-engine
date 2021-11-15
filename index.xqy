@@ -5,7 +5,7 @@ import module namespace search = "http://marklogic.com/appservices/search" at
 import module namespace adv = "http://marklogic.com/MLU/search-app/advanced" at "modules/advanced-lib.xqy";
 declare variable $facet-size as xs:integer := 10;
 
-
+ 
 declare function local:article-detail()
 {
 	let $uri := xdmp:get-request-field("uri")
@@ -15,26 +15,30 @@ declare function local:article-detail()
 			<table class="table">
 				<thead>
 					<tr>
-					<th><abbr title="Title">Title</abbr></th>
+					<th><abbr title="Title">ArticleTitle</abbr></th>
 					<th><abbr title="ISOAbbreviation">ISOAbbreviation</abbr></th>
-					<th><abbr title="ArticleTitle">ArticleTitle</abbr></th>
+					<th><abbr title="ArticleTitle">Journal Title</abbr></th>
 					<th><abbr title="DateCompleted">DateCompleted</abbr></th>
 					<th><abbr title="lang">lang</abbr></th>
 					</tr>
 				</thead>
 				<tbody>
 					<tr>
-					{if ($article//..//Title) then <th>{$article//..//Title/text()}</th> else ()}
+					{if ($article//..//ArticleTitle) then <th>{$article//..//ArticleTitle/text()}</th> else ()}
 					{if ($article//..//ISOAbbreviation) then <td> {$article//..//ISOAbbreviation/text()} </td> else ()}
-					{if ($article//..//ArticleTitle) then <td> {$article//..//ArticleTitle/text()} </td> else ()}
+					{if ($article//..//Title) then <td> {$article//..//Title/text()} </td> else ()}
 					{if ($article//..//DateCompleted) then 
-					<td> {$article//..//DateCompleted//Year/text()} - {$article//..//DateCompleted//Month/text()} - {$article//..//DateCompleted//Day/text()}  </td>else ()}
+					<td> {$article//..//DateCompleted//Year/text()} - {$article//..//DateCompleted//Month/text()} - {$article//..//DateCompleted//Day/text()}  </td> else ()}
 					{if ($article//..//Language) then <td> {$article//..//Language/text()} </td> else ()}
 					</tr>
 				</tbody>
 			</table>
 			<p><strong>AbstractText: </strong></p> 
-			{if ($article//..//AbstractText) then <td class="detailitem">{$article//..//AbstractText/text()}</td> else ()}
+			{if ($article//..//AbstractText) then <td class="detailitem">{$article//..//AbstractText/text()}<br></br></td> else ()}
+			<br>
+				{if ($article//..//LastName) then <div ><strong>Authors: </strong> {fn:string-join(($article//..//LastName/text())[1 to 3], ", ")}</div> else ()}
+			</br>
+			
 		</div>
 	
 			
@@ -354,81 +358,78 @@ declare function local:pagination($resultspag)
 
 declare function local:facets()
 {
-	if (xdmp:get-request-field("uri"))
-	then ()
-	else
-		for $facet in $results/search:facet
-		let $facet-count := fn:count($facet/search:facet-value)
-		let $facet-name := fn:data($facet/@name)
-		return
-			if($facet-count > 0)
-			then 
-			<br>
-				<div class="card" >
-						<strong style="padding:15px;" >
-							{$facet-name}
-						</strong>
-					{ 	
-						let $facet-items :=
-							for $val in $facet/search:facet-value
-							let $print := if($val/text()) then $val/text() else "Unknown"
-							let $qtext := ($results/search:qtext)
-							let $sort := local:get-sort($qtext)
-							let $this :=
-								if (fn:matches($val/@name/string(),"\W"))
-								then fn:concat('"',$val/@name/string(),'"')
-								else if ($val/@name eq "") then '""'
-								else $val/@name/string()
+	for $facet in $results/search:facet
+	let $facet-count := fn:count($facet/search:facet-value)
+	let $facet-name := fn:data($facet/@name)
+	return
+		if($facet-count > 0)
+		then 
+		<br>
+			<div class="card" >
+					<strong style="padding:15px;" >
+						{$facet-name}
+					</strong>
+				{ 	
+					let $facet-items :=
+						for $val in $facet/search:facet-value
+						let $print := if($val/text()) then $val/text() else "Unknown"
+						let $qtext := ($results/search:qtext)
+						let $sort := local:get-sort($qtext)
+						let $this :=
+							if (fn:matches($val/@name/string(),"\W"))
+							then fn:concat('"',$val/@name/string(),'"')
+							else if ($val/@name eq "") then '""'
+							else $val/@name/string()
 
-							let $this := fn:concat($facet/@name,':',$this)
-							let $selected := fn:matches($qtext,$this,"i")
-							let $icon :=
-								if($selected)
+						let $this := fn:concat($facet/@name,':',$this)
+						let $selected := fn:matches($qtext,$this,"i")
+						let $icon :=
+							if($selected)
 
-								then <img src="images/checkmark.gif"/>
-								else <img src="images/checkblank.gif"/>
+							then <img src="images/checkmark.gif"/>
+							else <img src="images/checkblank.gif"/>
 
-							let $link :=
-								if($selected)
+						let $link :=
+							if($selected)
 
-								then search:remove-constraint($qtext,$this,$options)
-								else if(fn:string-length($qtext) gt 0)
-								then fn:concat("(",$qtext,")"," AND ",$this)
-								else $this
+							then search:remove-constraint($qtext,$this,$options)
+							else if(fn:string-length($qtext) gt 0)
+							then fn:concat("(",$qtext,")"," AND ",$this)
+							else $this
 
-							let $link := if($sort and fn:not(local:get-sort($link))) then fn:concat($link," ",$sort) else $link
-							let $link := fn:encode-for-uri($link)
-							return
-									<div style="padding:10px;">
-										<a href="index.xqy?q={$link}">
-											{fn:lower-case($print)}
-										</a>
-										<span>
-											[{fn:data($val/@count)}]
-										</span>
-									</div>
-								
-						return (
-							<div>{$facet-items[1 to $facet-size]}</div>,
-							if($facet-count gt $facet-size)
-							then (
-								<div class="facet-hidden" id="{$facet-name}">{$facet-items[position() gt $facet-size]}</div>,
-								<div class="facet-toggle" id="{$facet-name}_more">
-									<img src="images/checkblank.gif"/>
-									<a href="javascript:toggle('{$facet-name}');" class="black">more...</a>
-								</div>,
-								<div class="facet-toggle-hidden" id="{$facet-name}_less">
-									<img src="images/checkblank.gif"/>
-									<a href="javascript:toggle('{$facet-name}');" class="black">less...</a>
+						let $link := if($sort and fn:not(local:get-sort($link))) then fn:concat($link," ",$sort) else $link
+						let $link := fn:encode-for-uri($link)
+						return
+								<div style="padding:10px;">
+									<a href="index.xqy?q={$link}">
+										{fn:lower-case($print)}
+									</a>
+									<span>
+										[{fn:data($val/@count)}]
+									</span>
 								</div>
-							)
 							
-							else ()	
+					return (
+						<div>{$facet-items[1 to $facet-size]}</div>,
+						if($facet-count gt $facet-size)
+						then (
+							<div class="facet-hidden" id="{$facet-name}">{$facet-items[position() gt $facet-size]}</div>,
+							<div class="facet-toggle" id="{$facet-name}_more">
+								<img src="images/checkblank.gif"/>
+								<a href="javascript:toggle('{$facet-name}');" class="black">more...</a>
+							</div>,
+							<div class="facet-toggle-hidden" id="{$facet-name}_less">
+								<img src="images/checkblank.gif"/>
+								<a href="javascript:toggle('{$facet-name}');" class="black">less...</a>
+							</div>
 						)
-					}
-				</div>
-			</br>
-			else <div>&#160;</div>
+						
+						else ()	
+					)
+				}
+			</div>
+		</br>
+		else <div>&#160;</div>
 };
 
 xdmp:set-response-content-type("text/html; charset=utf-8"),
@@ -467,7 +468,7 @@ xdmp:set-response-content-type("text/html; charset=utf-8"),
 						<button class="button" style="background-color:hsl(204, 86%, 53%); color:white;" type="submit" id="submitbtn" name="submitbtn">
 							search
 						</button>
-						    <a href="advanced.xqy">advanced search</a>
+						<a style="padding-left:20px;" href="advanced.xqy">advanced search</a>
 					</div>
 				</div>
 				<div id="detaildiv">

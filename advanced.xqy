@@ -26,58 +26,62 @@ xdmp:set-response-content-type("text/html; charset=utf-8"),
 
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-<title>Search App</title>
-<script type="text/javascript" src="/autocomplete/lib/prototype/prototype.js"></script> 
-<script type="text/javascript" src="/autocomplete/lib/scriptaculous/scriptaculous.js"></script> 
-<script type="text/javascript" src="/autocomplete/src/AutoComplete.js"></script>
-<script type="text/javascript" src="/autocomplete/src/lib.js"></script>
+  <title>Search App</title>
+  <script type="text/javascript" src="/autocomplete/lib/prototype/prototype.js"></script> 
+  <script type="text/javascript" src="/autocomplete/lib/scriptaculous/scriptaculous.js"></script> 
+  <script type="text/javascript" src="/autocomplete/src/AutoComplete.js"></script>
+  <script type="text/javascript" src="/autocomplete/src/lib.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.3/css/bulma.min.css"/>
 </head>
 <body>
-<div id="wrapper">
-<div id="rightcol">
-  <div id="searchdiv">
-  <form name="formadv" method="get" action="index.xqy" id="formadv">
-  <input type="hidden" name="advanced" value="advanced"/>
-  <table border="0" cellspacing="8">
-    <tr>
-      <td align="right">&#160;</td>
-      <td colspan="4" class="songnamelarge"><span class="tiny">&#160;&#160;</span><br />
-        Advanced Search<br />
-        <span class="tiny">&#160;&#160;</span></td>
-    </tr>
-    <tr>
-      <td align="right">Search for:</td>
-      <td colspan="4"><input type="text" name="keywords" id="keywords" size="40"/>
-        &#160;
-        <select name="type" id="type">
-          <option value="all">all of these words</option>
-          <option value="any">any of these words</option>
-          <option value="phrase">exact phrase</option>
-        </select></td>
-    </tr>
-    <tr>
-      <td align="right">Words to exclude:</td>
-      <td colspan="4"><input type="text" name="exclude" id="exclude" size="40"/></td>
-    </tr>
-    <tr>
-      <td align="right">Status:</td>
-      <td colspan="4"><select name="status" id="Status">
-        <option value="all">all</option>
-		      {local:list-status-vals()}
-      </select></td>
-    </tr>
-    <tr>
-      <td align="right">Journal title:</td>
-      <td colspan="4"><input type="text" name="Title" id="Title" size="40" autocomplete="off"/></td>
-    </tr>
-    <tr valign="top">
-      <td align="right">&#160;</td>
-      <td><span class="tiny">&#160;&#160;</span><br /><input type="submit" name="submitbtn" id="submitbtn" value="search"/></td>
-    </tr>
-  </table>
-  </form>
+  <div class="tabs is-centered is-info">
+      <ul class="is-info" style="background-color:hsl(204, 86%, 53%);">
+        <li class="is-info">
+          <a style="color:white; font-size:22px;" href= "index.xqy">Home</a>
+        </li>
+      </ul>
+  
+  
+
   </div>
-</div>
+  <div style="padding-top:50px;width: 50%;display: block;margin-left: auto;margin-right: auto;s">
+    <form name="formadv" method="get" action="index.xqy" id="formadv">
+      <label><strong>Search for:</strong></label>
+      <div style="white-space: nowrap;">
+        
+        <input style="display: inline-block;" class="input is-info" type="text" name="keywords" id="keywords" size="40"/>
+        <div style="padding-left:10px;" class="select is-info">
+          <select style="display: inline-block; paddin-left:10px;" class="is-info" name="type" id="type">
+            <option value="all">all of these words</option>
+              <option value="any">any of these words</option>
+              <option value="phrase">exact phrase</option>
+          </select>
+        </div>
+      </div>
+    <br>
+      <label><strong>Words to exclude: </strong></label>
+      <input class="input is-info" type="text" name="exclude" id="exclude" size="40"/>
+    </br>
+
+    <br>
+      <p><strong>Status: </strong></p>
+      <div style="paddin-left:10px;" class="select is-info">
+        <select class="is-info" name="status" id="Status">
+          <option value="all">all</option>
+              {local:list-status-vals()}
+        </select>
+      </div>
+    </br>
+    
+    <br>
+      <label><strong>Journal title: </strong></label>
+      <input class="input is-info" type="text" name="Title" id="Title" size="40" autocomplete="off"/>
+    </br>
+
+    <br>
+      <button class="button" style="background-color:hsl(204, 86%, 53%); color:white;" type="submit" id="submitbtn" name="submitbtn">Apply</button>
+    </br>
+  </form>
 <div id="footer"></div>
 </div>
 </body>
