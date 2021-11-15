@@ -1,0 +1,45 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Search app</title>
+  <link href="css/search.css" rel="stylesheet" type="text/css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.3/css/bulma.min.css">
+</head>
+<body>
+<div id="wrapper">
+<div id="header">
+  <a href="xquery/index.xqy"></a>
+  <div class="tabs is-centered">
+		<ul>
+			<li class="is-active"><a>Home</a></li>
+		</ul>
+	</div>
+</div>
+<div id="leftcol">
+  <img src="images/checkblank.gif"/>facet content here<br />
+  <br />
+</div>
+<div id="rightcol">
+  <form name="form1" method="get" action="xquery/index.xqy" id="form1">
+  <div id="searchdiv">
+    <div class="field has-addons">
+      <div class="control">
+        <input class="input" type="text" placeholder="search in articles" name="q" id="q" size="50"/>
+      </div>
+      <div class="control">
+        <a class="button is-info">
+          Search
+        </a>
+      </div>
+    </div>
+    <button type="button" id="reset_button" onclick="document.getElementById('bday').value = ''; document.getElementById('q').value = ''; document.location.href='xquery/index.xqy'">x</button>&#160;
+    <input style="border:0; width:0; height:0; background-color: #A7C030" type="text" size="0" maxlength="0"/><input type="submit" id="submitbtn" name="submitbtn" value="search"/>&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;&#160;<a href="advanced.xqy">advanced search</a>
+  </div>
+  <div id="detaildiv">
+  </div>
+  </form>
+</div>
+<div id="footer"></div>
+</div>
+</body>
+</html>
