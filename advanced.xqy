@@ -27,7 +27,6 @@ xdmp:set-response-content-type("text/html; charset=utf-8"),
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <title>Search App</title>
-<link href="css/top-songs.css" rel="stylesheet" type="text/css"/>
 <script type="text/javascript" src="/autocomplete/lib/prototype/prototype.js"></script> 
 <script type="text/javascript" src="/autocomplete/lib/scriptaculous/scriptaculous.js"></script> 
 <script type="text/javascript" src="/autocomplete/src/AutoComplete.js"></script>
@@ -35,16 +34,6 @@ xdmp:set-response-content-type("text/html; charset=utf-8"),
 </head>
 <body>
 <div id="wrapper">
-<div id="header"><a href="index.xqy"><img src="images/banner.jpg" width="918" height="153" border="0"/></a></div>
-<div id="leftcol">
-  <p>&#160;</p>
-  <p>&#160;</p>
-  <p>&#160;</p>
-  <p>&#160;</p>
-  <p>&#160;</p>
-  <p>&#160;</p>
-  <p>&#160;</p>
-</div>
 <div id="rightcol">
   <div id="searchdiv">
   <form name="formadv" method="get" action="index.xqy" id="formadv">
@@ -74,7 +63,7 @@ xdmp:set-response-content-type("text/html; charset=utf-8"),
       <td align="right">Status:</td>
       <td colspan="4"><select name="status" id="Status">
         <option value="all">all</option>
-		{local:list-status-vals()}
+		      {local:list-status-vals()}
       </select></td>
     </tr>
     <tr>
@@ -84,9 +73,6 @@ xdmp:set-response-content-type("text/html; charset=utf-8"),
     <tr valign="top">
       <td align="right">&#160;</td>
       <td><span class="tiny">&#160;&#160;</span><br /><input type="submit" name="submitbtn" id="submitbtn" value="search"/></td>
-      <td>&#160;</td>
-      <td>&#160;</td>
-      <td>&#160;</td>
     </tr>
   </table>
   </form>

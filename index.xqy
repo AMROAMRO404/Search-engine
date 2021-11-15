@@ -5,50 +5,6 @@ import module namespace search = "http://marklogic.com/appservices/search" at
 import module namespace adv = "http://marklogic.com/MLU/search-app/advanced" at "modules/advanced-lib.xqy";
 declare variable $facet-size as xs:integer := 10;
 
-declare function local:result-controller()
-{
-	if(xdmp:get-request-field("q"))
-	then local:search-results()
-	else 	if(xdmp:get-request-field("uri"))
-			then local:article-detail()  
-			else local:default-results()
-};
-
-
-
-declare function local:default-results()
-{
-	
-	let $items :=
-		for $article in fn:doc()
-		return
-			<br>
-				<div style="box-shadow: rgba(0, 0, 0, 0.2) 0px 12px 28px 0px, rgba(0, 0, 0, 0.1) 0px 2px 4px 0px, rgba(255, 255, 255, 0.05) 0px 0px 0px 1px inset;" class="card">
-					<div class="card-content">
-						<p class="title">
-						{$article//..//ArticleTitle/text()}
-						</p>
-						<p class="subtitle">
-						{
-							for $i in $article//..//AbstractText
-							return fn:tokenize($i , " ")[1 to 30]
-						}
-						</p>
-					</div>
-					<footer class="card-footer">
-						<p class="card-footer-item">
-						<span>
-							<a href="index.xqy?uri={xdmp:url-encode(fn:base-uri($article))}">read more </a>
-						</span>
-						</p>
-					</footer>
-				</div>
-			</br>
-	return
-	if($items)
-	then (local:pagination($results), $items)
-	else <div>Sorry, no results for your search.<br/><br/><br/></div>
-};
 
 declare function local:article-detail()
 {
@@ -205,34 +161,37 @@ declare variable $results :=
 
 declare function local:search-results()
 {
-	let $items :=
-		for $article in $results/search:result
-		let $uri := fn:data($article/@uri)
-		let $articledoc := fn:doc($uri)
-		return
-			<br>
-				<div style="box-shadow: rgba(0, 0, 0, 0.2) 0px 12px 28px 0px, rgba(0, 0, 0, 0.1) 0px 2px 4px 0px, rgba(255, 255, 255, 0.05) 0px 0px 0px 1px inset;" class="card">
-					<div class="card-content">
-						<p class="title">
-						{$articledoc//..//ArticleTitle/text()}
-						</p>
-						<p class="subtitle">
-						{local:description($article)}
-						</p>
+	if(xdmp:get-request-field("uri"))
+		then local:article-detail()
+	else
+		let $items :=
+			for $article in $results/search:result
+			let $uri := fn:data($article/@uri)
+			let $articledoc := fn:doc($uri)
+			return
+				<br>
+					<div style="box-shadow: rgba(0, 0, 0, 0.2) 0px 12px 28px 0px, rgba(0, 0, 0, 0.1) 0px 2px 4px 0px, rgba(255, 255, 255, 0.05) 0px 0px 0px 1px inset;" class="card">
+						<div class="card-content">
+							<p class="title">
+							{$articledoc//..//ArticleTitle/text()}
+							</p>
+							<p class="subtitle">
+							{local:description($article)}
+							</p>
+						</div>
+						<footer class="card-footer">
+							<p class="card-footer-item">
+							<span>
+								<a href="index.xqy?uri={xdmp:url-encode($uri)}">read more </a>
+							</span>
+							</p>
+						</footer>
 					</div>
-					<footer class="card-footer">
-						<p class="card-footer-item">
-						<span>
-							<a href="index.xqy?uri={xdmp:url-encode($uri)}">read more </a>
-						</span>
-						</p>
-					</footer>
-				</div>
-			</br>
-	return
-	if($items)
-	then (local:pagination($results), $items)
-	else <div>Sorry, no results for your search.<br/><br/><br/></div>
+				</br>
+		return
+		if($items)
+		then (local:pagination($results), $items)
+		else <div>Sorry, no results for your search.<br/><br/><br/></div>
 };
 
 
@@ -395,78 +354,81 @@ declare function local:pagination($resultspag)
 
 declare function local:facets()
 {
-	for $facet in $results/search:facet
-	let $facet-count := fn:count($facet/search:facet-value)
-	let $facet-name := fn:data($facet/@name)
-	return
-		if($facet-count > 0)
-		then 
-		<br>
-			<div class="card" >
-					<strong style="padding:15px;" >
-						{$facet-name}
-					</strong>
-				{ 	
-					let $facet-items :=
-						for $val in $facet/search:facet-value
-						let $print := if($val/text()) then $val/text() else "Unknown"
-						let $qtext := ($results/search:qtext)
-						let $sort := local:get-sort($qtext)
-						let $this :=
-							if (fn:matches($val/@name/string(),"\W"))
-							then fn:concat('"',$val/@name/string(),'"')
-							else if ($val/@name eq "") then '""'
-							else $val/@name/string()
+	if (xdmp:get-request-field("uri"))
+	then ()
+	else
+		for $facet in $results/search:facet
+		let $facet-count := fn:count($facet/search:facet-value)
+		let $facet-name := fn:data($facet/@name)
+		return
+			if($facet-count > 0)
+			then 
+			<br>
+				<div class="card" >
+						<strong style="padding:15px;" >
+							{$facet-name}
+						</strong>
+					{ 	
+						let $facet-items :=
+							for $val in $facet/search:facet-value
+							let $print := if($val/text()) then $val/text() else "Unknown"
+							let $qtext := ($results/search:qtext)
+							let $sort := local:get-sort($qtext)
+							let $this :=
+								if (fn:matches($val/@name/string(),"\W"))
+								then fn:concat('"',$val/@name/string(),'"')
+								else if ($val/@name eq "") then '""'
+								else $val/@name/string()
 
-						let $this := fn:concat($facet/@name,':',$this)
-						let $selected := fn:matches($qtext,$this,"i")
-						let $icon :=
-							if($selected)
+							let $this := fn:concat($facet/@name,':',$this)
+							let $selected := fn:matches($qtext,$this,"i")
+							let $icon :=
+								if($selected)
 
-							then <img src="images/checkmark.gif"/>
-							else <img src="images/checkblank.gif"/>
+								then <img src="images/checkmark.gif"/>
+								else <img src="images/checkblank.gif"/>
 
-						let $link :=
-							if($selected)
+							let $link :=
+								if($selected)
 
-							then search:remove-constraint($qtext,$this,$options)
-							else if(fn:string-length($qtext) gt 0)
-							then fn:concat("(",$qtext,")"," AND ",$this)
-							else $this
+								then search:remove-constraint($qtext,$this,$options)
+								else if(fn:string-length($qtext) gt 0)
+								then fn:concat("(",$qtext,")"," AND ",$this)
+								else $this
 
-						let $link := if($sort and fn:not(local:get-sort($link))) then fn:concat($link," ",$sort) else $link
-						let $link := fn:encode-for-uri($link)
-						return
-								<div style="padding:10px;">
-									<a href="index.xqy?q={$link}">
-										{fn:lower-case($print)}
-									</a>
-									<span>
-										[{fn:data($val/@count)}]
-									</span>
+							let $link := if($sort and fn:not(local:get-sort($link))) then fn:concat($link," ",$sort) else $link
+							let $link := fn:encode-for-uri($link)
+							return
+									<div style="padding:10px;">
+										<a href="index.xqy?q={$link}">
+											{fn:lower-case($print)}
+										</a>
+										<span>
+											[{fn:data($val/@count)}]
+										</span>
+									</div>
+								
+						return (
+							<div>{$facet-items[1 to $facet-size]}</div>,
+							if($facet-count gt $facet-size)
+							then (
+								<div class="facet-hidden" id="{$facet-name}">{$facet-items[position() gt $facet-size]}</div>,
+								<div class="facet-toggle" id="{$facet-name}_more">
+									<img src="images/checkblank.gif"/>
+									<a href="javascript:toggle('{$facet-name}');" class="black">more...</a>
+								</div>,
+								<div class="facet-toggle-hidden" id="{$facet-name}_less">
+									<img src="images/checkblank.gif"/>
+									<a href="javascript:toggle('{$facet-name}');" class="black">less...</a>
 								</div>
+							)
 							
-					return (
-						<div>{$facet-items[1 to $facet-size]}</div>,
-						if($facet-count gt $facet-size)
-						then (
-							<div class="facet-hidden" id="{$facet-name}">{$facet-items[position() gt $facet-size]}</div>,
-							<div class="facet-toggle" id="{$facet-name}_more">
-								<img src="images/checkblank.gif"/>
-								<a href="javascript:toggle('{$facet-name}');" class="white">more...</a>
-							</div>,
-							<div class="facet-toggle-hidden" id="{$facet-name}_less">
-								<img src="images/checkblank.gif"/>
-								<a href="javascript:toggle('{$facet-name}');" class="white">less...</a>
-							</div>
+							else ()	
 						)
-						
-						else ()	
-					)
-				}
-			</div>
-		</br>
-		else <div>&#160;</div>
+					}
+				</div>
+			</br>
+			else <div>&#160;</div>
 };
 
 xdmp:set-response-content-type("text/html; charset=utf-8"),
