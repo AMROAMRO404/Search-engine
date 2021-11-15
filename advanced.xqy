@@ -40,16 +40,14 @@ xdmp:set-response-content-type("text/html; charset=utf-8"),
           <a style="color:white; font-size:22px;" href= "index.xqy">Home</a>
         </li>
       </ul>
-  
-  
-
   </div>
-  <div style="padding-top:50px;width: 50%;display: block;margin-left: auto;margin-right: auto;s">
+  
+  <div style="padding-top:50px;width: 50%;display: block;margin-left: auto;margin-right:auto;">
+    <P style="padding-bottom:30px;"><strong style="font-size:30px;">Advanced search option</strong></P>
     <form name="formadv" method="get" action="index.xqy" id="formadv">
       <input type="hidden" name="advanced" value="advanced"/>
       <label><strong>Search for:</strong></label>
       <div style="white-space: nowrap;">
-        
         <input style="display: inline-block;" class="input is-info" type="text" name="keywords" id="keywords" size="40"/>
         <div style="padding-left:10px;" class="select is-info">
           <select style="display: inline-block; paddin-left:10px;" class="is-info" name="type" id="type">
