@@ -1,40 +1,34 @@
 xquery version "1.0-ml";
 
-import module namespace search ="http://marklogic.com/appservices/search" at "/MarkLogic/appservices/search/search.xqy";    
+(:~
+ : Journal title suggestions for the advanced search form.
+ : Called as autocomplete.xqy?q=<typed text>, answers with
+ : <Suggestions><suggestion>...</suggestion></Suggestions>.
+ :)
+
+import module namespace cfg = "http://marklogic.com/MLU/search-app/config" at "modules/search-config.xqy";
 
 declare option xdmp:mapping "false";
-(: This line is required in v4.2 of ML Server for JavaScript to function properly :) 
-declare option xdmp:output 'indent=no';
+(: The widget reads the XML node by node, so there must be no whitespace between elements. :)
+declare option xdmp:output "indent=no";
 
-declare variable $options as node() := 
-    <options xmlns="http://marklogic.com/appservices/search">
-        <default-suggestion-source>
-            <range type="xs:string" collation="http://marklogic.com/collation/en/S1/AS/T00BB">
-                <element name="Title"/>
-            </range>
-        </default-suggestion-source>
-    </options>;
+declare variable $MAX-SUGGESTIONS as xs:integer := 10;
 
-(: cts:query way :)
-declare function local:get-suggestions($qname as xs:string,$q as xs:string){
-    for $i in cts:element-value-match(xs:QName($qname),fn:concat("*",$q,"*"), "collation=http://marklogic.com/collation/en/S1/AS/T00BB")
-    return element suggestion {$i}
+(: Journal titles containing the typed text, read from the Title range index. :)
+declare function local:suggestions($q as xs:string) as element(suggestion)*
+{
+    for $title in cts:element-value-match(
+        xs:QName("Title"),
+        fn:concat("*", $q, "*"),
+        (fn:concat("collation=", $cfg:title-collation), fn:concat("limit=", $MAX-SUGGESTIONS))
+    )
+    return element suggestion {$title}
 };
 
-(: searchapi way :)
-(: filed bug :)
-declare function local:search-suggestions($q as xs:string){
-    for $i in search:suggest($q,$options) 
-    return element suggestion {fn:substring(fn:substring($i,1,fn:string-length($i)-1),2)}
-};
-
-
-let $r := xdmp:set-response-content-type("text/xml")
-let $q := xdmp:get-request-field("q")
-return
-    if($q)
-    then
-        <Suggestions>
-            {local:get-suggestions("Title",$q)}
-        </Suggestions>
+let $q := fn:normalize-space(fn:string(xdmp:get-request-field("q")[1]))
+return (
+    xdmp:set-response-content-type("text/xml"),
+    if ($q ne "")
+    then <Suggestions>{local:suggestions($q)}</Suggestions>
     else ()
+)

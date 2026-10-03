@@ -1,482 +1,443 @@
 xquery version "1.0-ml";
-import module namespace search = "http://marklogic.com/appservices/search" at
-"/MarkLogic/appservices/search/search.xqy";
 
+(:~
+ : Main page: the search box, facets, result list and the article detail view.
+ :
+ :   index.xqy?q=...&sortby=...&start=...   search results
+ :   index.xqy?advanced=advanced&...        results for the advanced search form
+ :   index.xqy?uri=...                      one article
+ :)
+
+import module namespace search = "http://marklogic.com/appservices/search" at "/MarkLogic/appservices/search/search.xqy";
 import module namespace adv = "http://marklogic.com/MLU/search-app/advanced" at "modules/advanced-lib.xqy";
-declare variable $facet-size as xs:integer := 10;
+import module namespace cfg = "http://marklogic.com/MLU/search-app/config" at "modules/search-config.xqy";
+import module namespace layout = "http://marklogic.com/MLU/search-app/layout" at "modules/layout.xqy";
 
- 
-declare function local:article-detail()
+(: Facet values shown before the "more" link. :)
+declare variable $FACET-SIZE as xs:integer := 10;
+(: Page links shown on each side of the current page. :)
+declare variable $PAGE-WINDOW as xs:integer := 2;
+(: Authors listed under each search result. :)
+declare variable $RESULT-AUTHORS as xs:integer := 3;
+
+
+(: ---------- request ---------- :)
+
+(: A request field as a single string ("" when it is missing). :)
+declare function local:param($name as xs:string) as xs:string
 {
-	let $uri := xdmp:get-request-field("uri")
-	let $article := fn:doc($uri) 
-	return 
-		<div>
-			<table class="table">
-				<thead>
-					<tr>
-					<th><abbr title="Title">ArticleTitle</abbr></th>
-					<th><abbr title="ISOAbbreviation">ISOAbbreviation</abbr></th>
-					<th><abbr title="ArticleTitle">Journal Title</abbr></th>
-					<th><abbr title="DateCompleted">DateCompleted</abbr></th>
-					<th><abbr title="lang">lang</abbr></th>
-					</tr>
-				</thead>
-				<tbody>
-					<tr>
-					{if ($article//..//ArticleTitle) then <th>{$article//..//ArticleTitle/text()}</th> else ()}
-					{if ($article//..//ISOAbbreviation) then <td> {$article//..//ISOAbbreviation/text()} </td> else ()}
-					{if ($article//..//Title) then <td> {$article//..//Title/text()} </td> else ()}
-					{if ($article//..//DateCompleted) then 
-					<td> {$article//..//DateCompleted//Year/text()} - {$article//..//DateCompleted//Month/text()} - {$article//..//DateCompleted//Day/text()}  </td> else ()}
-					{if ($article//..//Language) then <td> {$article//..//Language/text()} </td> else ()}
-					</tr>
-				</tbody>
-			</table>
-			<p><strong>AbstractText: </strong></p> 
-			{if ($article//..//AbstractText) then <td class="detailitem">{$article//..//AbstractText/text()}<br></br></td> else ()}
-			<br>
-				{if ($article//..//LastName) then <div ><strong>Authors: </strong> {fn:string-join(($article//..//LastName/text())[1 to 3], ", ")}</div> else ()}
-			</br>
-			
-		</div>
-	
-			
+    fn:string(xdmp:get-request-field($name)[1])
 };
 
-
-declare function local:description($article)
+(: The sort order typed into the search box as sort:<name>, if it is a known one. :)
+declare function local:typed-sort($q as xs:string) as xs:string?
 {
-	for $text in $article/search:snippet/search:match/node()
-	return 
-		if(fn:node-name($text) eq xs:QName("search:highlight"))
-		then <span style="background-color:#e9de3f;"> {$text/text()}, </span>
-		else $text
-		
+    let $token := (fn:tokenize($q, "\s+")[fn:matches(., "^\(*sort:")])[1]
+    let $name := fn:replace(fn:substring-after($token, "sort:"), "[()]", "")
+    return $name[. = $cfg:sort-names]
 };
 
+declare variable $uri as xs:string := local:param("uri");
 
-			
-				
+declare variable $raw-q as xs:string :=
+    if (local:param("advanced") ne "")
+    then adv:advanced-q()
+    else local:param("q");
 
+declare variable $typed-sort as xs:string? := local:typed-sort($raw-q);
 
+(: The query without its sort order; this is what the search box shows. :)
+declare variable $base-q as xs:string :=
+    fn:normalize-space(
+        if ($typed-sort)
+        then fn:string(search:remove-constraint($raw-q, fn:concat("sort:", $typed-sort), $cfg:search-options))
+        else $raw-q
+    );
 
-declare variable $options := <search:options xmlns="http://marklogic.com/appservices/search">
-	<search:constraint name="Author">
-		<range type="xs:string" collation="http://marklogic.com/collation/en/S1/T00BB/AS">
-		<element  name="LastName"/>
-			<facet-option>limit=20</facet-option>
-			<facet-option>frequency-order</facet-option>
-			<facet-option>descending</facet-option>
-		</range>
-	</search:constraint>
-	<search:constraint name="Year">
-		<search:range type="xs:gYear">
-	
-			<search:bucket ge='2020' name="2020s">2020 - Present</search:bucket>
-			<search:bucket lt='2020' ge='2018' name="2018s">2018 - 2019</search:bucket>
-			<search:bucket lt='2018' ge='2015' name="2015s">2015 - 2017</search:bucket>
-			<search:bucket lt='2015' ge='2010' name="2010s">2010 - 2014</search:bucket>
-			<search:bucket lt='2010' ge='2000' name="2000s">2000 - 2009</search:bucket>
-			<search:bucket lt='2000' name="1999s">before 2000</search:bucket>
-			<search:field  name="neededYear"/>
-			<facet-option>limit=10</facet-option>
-			<facet-option>descending</facet-option>
-		</search:range>
-	</search:constraint>
+(: A sort typed in the box wins over the drop-down. With nothing to search for
+   there is no relevance, so the default is to browse by article title. The form
+   sends browse=1 from that browsing view: a first search made from there starts
+   by relevance instead of inheriting the browsing order. :)
+declare variable $sort as xs:string :=
+    let $selected := local:param("sortby")
+    let $first-search := local:param("browse") ne "" and $base-q ne ""
+    return
+        if ($typed-sort) then $typed-sort
+        else if ($selected = $cfg:sort-names and fn:not($first-search)) then $selected
+        else if ($base-q eq "") then "ArticleTitle"
+        else "relevance";
 
-        <constraint name="Status">
-            <range type="xs:string" collation="http://marklogic.com/collation/en/S1" facet="true">
-                <attribute name="Status"/>
-                <element name="MedlineCitation"/>
-                <facet-option>ascending</facet-option>
-            </range>
-        </constraint>    
+declare variable $start as xs:unsignedLong :=
+    let $requested := local:param("start")
+    return
+        if ($requested castable as xs:positiveInteger)
+        then xs:unsignedLong($requested)
+        else xs:unsignedLong(1);
 
-		<constraint name="Title">
-            <range type="xs:string" collation="http://marklogic.com/collation/en/S1/AS/T00BB" facet="false">
-                <element name="Title"/>
-            </range>
-        </constraint>     
-	
-	<transform-results apply="snippet">
-		<preferred-elements>
-			<element name="ArticleTitle"/>
-		</preferred-elements>
-	</transform-results>
-
-	<search:operator name="sort">
-
-		<search:state name="relevance">
-			<search:sort-order direction="descending">
-				<search:score/>
-			</search:sort-order>
-		</search:state>
-
-		<search:state name="newest">
-
-			<search:sort-order direction="descending" type="xs:gYear" >
-				<field  name="neededYear"/>
-			</search:sort-order>
-		
-			<search:sort-order>
-				<search:score/>
-			</search:sort-order>
-
-		</search:state>
+declare variable $results as element(search:response)? :=
+    if ($uri ne "")
+    then ()
+    else search:search(fn:normalize-space(fn:concat($base-q, " sort:", $sort)), $cfg:search-options, $start);
 
 
-		<search:state name="oldest">
+(: ---------- helpers ---------- :)
 
-			<search:sort-order direction="ascending" type="xs:gYear" >				
-				<field  name="neededYear"/>
-			</search:sort-order>
-
-			<search:sort-order>
-				<search:score/>
-			</search:sort-order>
-		
-		</search:state>
-
-		<search:state name="ArticleTitle">
-			<search:sort-order direction="ascending" type="xs:string" collation="http://marklogic.com/collation/en/S1/AS/T00BB"  facet="false">
-				<element name="ArticleTitle"/>
-			</search:sort-order>
-			<search:sort-order>
-				<search:score/>
-			</search:sort-order>
-		</search:state>
-	</search:operator>
-</search:options>;
-
-
-declare variable $q-text := 
-  let $q := if(xdmp:get-request-field("advanced"))
-            then adv:advanced-q()
-            else xdmp:get-request-field("q", "sort:ArticleTitle")
-  let $q := local:add-sort($q)
-  return $q;
-
-declare variable $results := 
-		search:search($q-text, $options, xs:unsignedLong(xdmp:get-request-field("start","1")));
-
-
-
-
-declare function local:search-results()
+(: Link to a page of results for $q, keeping the current sort order. :)
+declare function local:search-href($q as xs:string, $from as xs:anyAtomicType) as xs:string
 {
-	if(xdmp:get-request-field("uri"))
-		then local:article-detail()
-	else
-		let $items :=
-			for $article in $results/search:result
-			let $uri := fn:data($article/@uri)
-			let $articledoc := fn:doc($uri)
-			return
-				<br>
-					<div style="box-shadow: rgba(0, 0, 0, 0.2) 0px 12px 28px 0px, rgba(0, 0, 0, 0.1) 0px 2px 4px 0px, rgba(255, 255, 255, 0.05) 0px 0px 0px 1px inset;" class="card">
-						<div class="card-content">
-							<p class="title">
-							{$articledoc//..//ArticleTitle/text()}
-							</p>
-							<p class="subtitle">
-							{local:description($article)}
-							</p>
-						</div>
-						<footer class="card-footer">
-							<p class="card-footer-item">
-							<span>
-								<a href="index.xqy?uri={xdmp:url-encode($uri)}">read more </a>
-							</span>
-							</p>
-						</footer>
-					</div>
-				</br>
-		return
-		if($items)
-		then (local:pagination($results), $items)
-		else <div>Sorry, no results for your search.<br/><br/><br/></div>
+    fn:concat("index.xqy?q=", fn:encode-for-uri($q), "&amp;sortby=", $sort, "&amp;start=", $from)
 };
 
-
-(: gets the current sort argument from the query string :)
-declare function local:get-sort($q){
-	fn:replace(fn:tokenize($q," ") [fn:contains(.,"sort")],"[()]","")
-};
-
-declare function local:add-sort($q){
-	let $sortby := local:sort-controller()
-	return
-		if($sortby)
-		then
-			let $old-sort := local:get-sort($q)
-			let $q :=
-				if($old-sort)
-				then search:remove-constraint($q,$old-sort,$options)
-				else $q
-			return fn:concat($q," sort:",$sortby)
-		else $q
-};
-
-(: determines if the end-user set the sort through the drop-down or through editing
-the search text field :)
-declare function local:sort-controller(){
-	if(xdmp:get-request-field("submitbtn") or not(xdmp:get-request-field("sortby")))
-	then
-
-	let $order := fn:replace(
-		fn:substring-after(
-			fn:tokenize(xdmp:get-request-field("q","sort:ArticleTitle"), " ")[fn:contains(.,"sort")],"sort:"
-		),"[()]",""
-	)
-	return
-		if(fn:string-length($order) lt 1)
-		then "relevance"
-		else $order
-	else xdmp:get-request-field("sortby")
-};
-
-
-(: builds the sort drop-down with appropriate option selected :)
-
-declare function local:sort-options() {
-	let $sortby := local:sort-controller()
-	let $sort-options :=
-	<options>
-		<option value="relevance">relevance</option>
-		<option value="newest">newest</option>
-		<option value="oldest">oldest</option>
-		<option value="ArticleTitle">article title</option>
-	</options>
-
-	let $newsortoptions :=
-		for $option in $sort-options/*
-		return
-		element {fn:node-name($option)}
-		{
-			$option/@*,
-			if($sortby eq $option/@value)
-			then attribute selected {"true"} else (),
-			$option/node()
-		}
-	return (
-		<br>
-			<h3> <strong>Sort by: </strong>  </h3>
-			<div style="padding-top:7px;" class="select is-info">
-				<select name="sortby" onchange='this.form.submit()'>
-					{$newsortoptions}
-				</select> 
-			</div>
-		</br>
-	)
-		
-};
-
-
-
-declare function local:pagination($resultspag)
+(: Escapes a string so it can be used literally inside a regular expression. :)
+declare function local:regex-escape($text as xs:string) as xs:string
 {
-	let $start := xs:unsignedLong($resultspag/@start)
-	let $length := xs:unsignedLong($resultspag/@page-length)
-	let $total := xs:unsignedLong($resultspag/@total)
-	let $last := xs:unsignedLong($start + $length -1)
-	let $end := if ($total > $last) then $last else $total
-	let $qtext := $resultspag/search:qtext[1]/text()
-	let $next := if ($total > $last) then $last + 1 else ()
-	let $previous := if (($start > 1) and ($start - $length > 0)) then fn:max((($start - $length),1)) else ()
-	let $next-href :=
-		if ($next)
-			then fn:concat("index.xqy?q=",
-				if ($qtext) then fn:encode-for-uri($qtext)
-				else (),"&amp;start=",$next,"&amp;submitbtn=page")
-		else ()
-	let $previous-href :=
-		if ($previous)
-			then fn:concat("index.xqy?q=",
-				if ($qtext) then fn:encode-for-uri($qtext)
-				else (),"&amp;start=",$previous,"&amp;submitbtn=page")
-		else ()
+    fn:replace($text, "([\\\.\[\]\{\}\(\)\*\+\?\^\$\|\-])", "\\$1")
+};
 
-	let $total-pages := fn:ceiling($total div $length)
-	let $currpage := fn:ceiling($start div $length)
-	let $pagemin := fn:min(for $i in (1 to 4)
-	where ($currpage - $i) > 0
-	return $currpage - $i)
+declare function local:author-name($author as element()) as xs:string
+{
+    fn:normalize-space(
+        if ($author/LastName)
+        then fn:concat(($author/ForeName)[1], " ", ($author/LastName)[1])
+        else fn:string(($author/CollectiveName)[1])
+    )
+};
 
-	let $rangestart := fn:max(($pagemin, 1))
+declare function local:author-names($article as node()?) as xs:string*
+{
+    for $author in $article//Author
+    return local:author-name($author)[. ne ""]
+};
 
-	let $rangeend := fn:min(($total-pages,$rangestart + 4))
-	return (
-		local:sort-options(), 
-		<div style="padding-bottom:10px;" id="countdiv">
-			<b>{$start}</b>
-			to 
-			<b>{$end}</b>
-			of {$total}
-		</div>
-		
-		,
-		if($rangestart eq $rangeend)
-			then ()
-		else
-			<div id="pagenumdiv">
-
-		{
-		
-		if ($previous)
-			then
-				<a href="{$previous-href}" title="View previous{$length} results" class="pagination-previous">Previous</a> 
-		else ()
-
-		}
-
-		{
-			for $i in ($rangestart to $rangeend)
-			let $page-start := (($length * $i) + 1) - $length
-
-			let $page-href := concat("index.xqy?q=",if ($qtext) then encode-for-uri($qtext) else (),"&amp;start=",$page-start,"&amp;submitbtn=page")
-
-			return
-			if ($i eq $currpage)
-
-			then 
-				<a styl="text-color:white;" class="pagination-link"  style="color:white; background-color:hsl(0, 0%, 50%);" aria-label="Page 46" aria-current="page">{$i}</a>
-			else 
-				<a href="{$page-href}" class="pagination-link "  aria-label="Goto page i">{$i}</a>
-		}
-		{
-			if ($next) 
-			then 
-				<a href="{$next-href}" title="View next {$length} results" class="pagination-next">Next page</a>
-			else() 
-		
-		}
-		</div>
-	)
+declare function local:article-title($article as node()?) as xs:string
+{
+    let $title := fn:normalize-space(fn:string(($article//ArticleTitle)[1]))
+    return if ($title ne "") then $title else "Untitled article"
 };
 
 
-declare function local:facets()
+(: ---------- article detail ---------- :)
+
+declare function local:detail-row($label as xs:string, $value as xs:string?) as element(tr)?
 {
-	for $facet in $results/search:facet
-	let $facet-count := fn:count($facet/search:facet-value)
-	let $facet-name := fn:data($facet/@name)
-	return
-		if($facet-count > 0)
-		then 
-		<br>
-			<div class="card" >
-					<strong style="padding:15px;" >
-						{$facet-name}
-					</strong>
-				{ 	
-					let $facet-items :=
-						for $val in $facet/search:facet-value
-						let $print := if($val/text()) then $val/text() else "Unknown"
-						let $qtext := ($results/search:qtext)
-						let $sort := local:get-sort($qtext)
-						let $this :=
-							if (fn:matches($val/@name/string(),"\W"))
-							then fn:concat('"',$val/@name/string(),'"')
-							else if ($val/@name eq "") then '""'
-							else $val/@name/string()
+    if (fn:normalize-space($value) ne "")
+    then <tr><th>{$label}</th><td>{fn:normalize-space($value)}</td></tr>
+    else ()
+};
 
-						let $this := fn:concat($facet/@name,':',$this)
-						let $selected := fn:matches($qtext,$this,"i")
-						let $icon :=
-							if($selected)
+declare function local:article-detail() as element(div)
+{
+    let $article := fn:doc($uri)
+    let $back := <a href="{local:search-href($base-q, $start)}">&#8592; Back to results</a>
+    return
+        if (fn:empty($article))
+        then
+            <div>
+                <div class="notification is-warning">This article could not be found.</div>
+                <p>{$back}</p>
+            </div>
+        else
+            let $pmid := fn:normalize-space(fn:string(($article//MedlineCitation/PMID, $article//PMID)[1]))
+            let $completed := ($article//DateCompleted)[1]
+            let $authors := local:author-names($article)
+            let $abstract := $article//AbstractText[fn:normalize-space(.) ne ""]
+            let $rows := (
+                local:detail-row("Journal", fn:string(($article//Title)[1])),
+                local:detail-row("Abbreviation", fn:string(($article//ISOAbbreviation)[1])),
+                local:detail-row("Authors", fn:string-join($authors, ", ")),
+                local:detail-row("Date completed",
+                    fn:string-join(($completed/Year, $completed/Month, $completed/Day), "-")),
+                local:detail-row("Language", fn:string-join($article//Language, ", ")),
+                local:detail-row("Status", fn:string(($article//MedlineCitation/@Status)[1])),
+                local:detail-row("PMID", $pmid)
+            )
+            return
+                <div class="article-detail">
+                    <p class="mb-4">{$back}</p>
+                    <h1 class="title is-4">{local:article-title($article)}</h1>
+                    {
+                        if ($rows)
+                        then <table class="table is-fullwidth is-striped"><tbody>{$rows}</tbody></table>
+                        else ()
+                    }
+                    <h2 class="title is-5">Abstract</h2>
+                    {
+                        if ($abstract)
+                        then
+                            for $part in $abstract
+                            return
+                                <p class="mb-3">
+                                    {if ($part/@Label) then <strong>{fn:string($part/@Label)}: </strong> else ()}
+                                    {fn:string($part)}
+                                </p>
+                        else <p class="has-text-grey">No abstract is available for this article.</p>
+                    }
+                    {
+                        if ($pmid ne "")
+                        then
+                            <p class="mt-5">
+                                <a class="button is-info is-light" href="https://pubmed.ncbi.nlm.nih.gov/{fn:encode-for-uri($pmid)}/"
+                                   target="_blank" rel="noopener">View on PubMed</a>
+                            </p>
+                        else ()
+                    }
+                </div>
+};
 
-							then <img src="images/checkmark.gif"/>
-							else <img src="images/checkblank.gif"/>
 
-						let $link :=
-							if($selected)
+(: ---------- search results ---------- :)
 
-							then search:remove-constraint($qtext,$this,$options)
-							else if(fn:string-length($qtext) gt 0)
-							then fn:concat("(",$qtext,")"," AND ",$this)
-							else $this
+(: The matching text of a result, with the matched words highlighted. :)
+declare function local:snippet($result as element(search:result)) as node()*
+{
+    for $match at $position in $result/search:snippet/search:match
+    return (
+        if ($position gt 1) then text {" &#8230; "} else (),
+        for $node in $match/node()
+        return
+            if ($node instance of element(search:highlight))
+            then <mark class="highlight">{fn:string($node)}</mark>
+            else text {fn:string($node)}
+    )
+};
 
-						let $link := if($sort and fn:not(local:get-sort($link))) then fn:concat($link," ",$sort) else $link
-						let $link := fn:encode-for-uri($link)
-						return
-								<div style="padding:10px;">
-									<a href="index.xqy?q={$link}">
-										{fn:lower-case($print)}
-									</a>
-									<span>
-										[{fn:data($val/@count)}]
-									</span>
-								</div>
-							
-					return (
-						<div>{$facet-items[1 to $facet-size]}</div>,
-						if($facet-count gt $facet-size)
-						then (
-							<div class="facet-hidden" id="{$facet-name}">{$facet-items[position() gt $facet-size]}</div>,
-							<div class="facet-toggle" id="{$facet-name}_more">
-								<img src="images/checkblank.gif"/>
-								<a href="javascript:toggle('{$facet-name}');"  style="color:black;font-size:16px;"><strong>more...</strong></a>
-							</div>,
-							<div class="facet-toggle-hidden" id="{$facet-name}_less">
-								<img src="images/checkblank.gif"/>
-								<a href="javascript:toggle('{$facet-name}');" style="color:black;font-size:16px;"><strong>less...</strong></a>
-							</div>
-						)
-						
-						else ()	
-					)
-				}
-			</div>
-		</br>
-		else <div>&#160;</div>
+(: "Journal · Year · Author, Author, Author et al." :)
+declare function local:result-meta($article as node()?) as xs:string
+{
+    let $authors := local:author-names($article)
+    let $author-text :=
+        if (fn:count($authors) gt $RESULT-AUTHORS)
+        then fn:concat(fn:string-join($authors[1 to $RESULT-AUTHORS], ", "), " et al.")
+        else fn:string-join($authors, ", ")
+    let $parts := (
+        fn:string(($article//Title)[1]),
+        fn:string(($article//PubDate/Year, $article//DateCompleted/Year)[1]),
+        $author-text
+    )
+    return fn:string-join($parts[fn:normalize-space(.) ne ""], " &#183; ")
+};
+
+declare function local:result-card($result as element(search:result)) as element(div)
+{
+    let $doc-uri := fn:string($result/@uri)
+    let $article := fn:doc($doc-uri)
+    let $href := fn:concat(
+        "index.xqy?uri=", xdmp:url-encode($doc-uri),
+        "&amp;q=", fn:encode-for-uri($base-q),
+        "&amp;sortby=", $sort,
+        "&amp;start=", $start
+    )
+    let $meta := local:result-meta($article)
+    let $snippet := local:snippet($result)
+    return
+        <div class="card result-card">
+            <div class="card-content">
+                <p class="title is-5"><a href="{$href}">{local:article-title($article)}</a></p>
+                {if ($meta ne "") then <p class="result-meta">{$meta}</p> else ()}
+                {if ($snippet) then <p class="result-snippet">{$snippet}</p> else ()}
+            </div>
+            <footer class="card-footer">
+                <a class="card-footer-item" href="{$href}">Read more</a>
+            </footer>
+        </div>
+};
+
+declare function local:page-link($page as xs:integer, $current as xs:integer, $length as xs:integer) as element(li)
+{
+    <li>
+    {
+        if ($page eq $current)
+        then <a class="pagination-link is-current" aria-label="Page {$page}" aria-current="page">{$page}</a>
+        else
+            <a class="pagination-link" aria-label="Go to page {$page}"
+               href="{local:search-href($base-q, ($page - 1) * $length + 1)}">{$page}</a>
+    }
+    </li>
+};
+
+(: Previous / next links and the page numbers around the current page. :)
+declare function local:pagination() as element(nav)?
+{
+    let $total := xs:integer($results/@total)
+    let $length := xs:integer($results/@page-length)
+    let $pages := xs:integer(fn:ceiling($total div $length))
+    let $current := xs:integer(fn:ceiling(xs:integer($results/@start) div $length))
+    let $first := fn:max((1, $current - $PAGE-WINDOW))
+    let $last := fn:min(($pages, $current + $PAGE-WINDOW))
+    return
+        if ($pages le 1)
+        then ()
+        else
+            <nav class="pagination is-centered" role="navigation" aria-label="pagination">
+                {
+                    if ($current gt 1)
+                    then
+                        <a class="pagination-previous" title="View previous {$length} results"
+                           href="{local:search-href($base-q, ($current - 2) * $length + 1)}">Previous</a>
+                    else ()
+                }
+                {
+                    if ($current lt $pages)
+                    then
+                        <a class="pagination-next" title="View next {$length} results"
+                           href="{local:search-href($base-q, $current * $length + 1)}">Next page</a>
+                    else ()
+                }
+                <ul class="pagination-list">
+                    {
+                        if ($first gt 1)
+                        then (
+                            local:page-link(1, $current, $length),
+                            if ($first gt 2) then <li><span class="pagination-ellipsis">&#8230;</span></li> else ()
+                        )
+                        else ()
+                    }
+                    {for $page in ($first to $last) return local:page-link($page, $current, $length)}
+                    {
+                        if ($last lt $pages)
+                        then (
+                            if ($last lt $pages - 1) then <li><span class="pagination-ellipsis">&#8230;</span></li> else (),
+                            local:page-link($pages, $current, $length)
+                        )
+                        else ()
+                    }
+                </ul>
+            </nav>
+};
+
+declare function local:search-results() as node()*
+{
+    let $hits := $results/search:result
+    let $total := xs:integer($results/@total)
+    let $from := xs:integer($results/@start)
+    return
+        if (fn:empty($hits))
+        then
+            <div class="notification">
+                <p><strong>Sorry, no results for your search.</strong></p>
+                <p>Check the spelling, try fewer words, or remove a filter on the left.</p>
+            </div>
+        else (
+            <p class="result-count">
+                Showing <strong>{$from}</strong> to <strong>{$from + fn:count($hits) - 1}</strong> of <strong>{$total}</strong> articles
+            </p>,
+            for $result in $hits return local:result-card($result),
+            local:pagination()
+        )
+};
+
+
+(: ---------- facets ---------- :)
+
+(: The text that selects a facet value in the query, e.g. Author:"De Vries". :)
+declare function local:facet-term($facet-name as xs:string, $value as xs:string) as xs:string
+{
+    fn:concat(
+        $facet-name, ":",
+        if ($value eq "" or fn:matches($value, "\W"))
+        then fn:concat('"', $value, '"')
+        else $value
+    )
+};
+
+(: One facet value: a link that adds it to the query, or removes it when it is already selected. :)
+declare function local:facet-value($facet-name as xs:string, $value as element(search:facet-value)) as element(div)
+{
+    let $label := if (fn:normalize-space($value) ne "") then fn:string($value) else "Unknown"
+    let $term := local:facet-term($facet-name, fn:string($value/@name))
+    let $selected := fn:matches($base-q, fn:concat("(^|[\s(])", local:regex-escape($term), "($|[\s)])"), "i")
+    let $q :=
+        if ($selected)
+        then fn:normalize-space(fn:string(search:remove-constraint($base-q, $term, $cfg:search-options)))
+        else if ($base-q ne "")
+        then fn:concat("(", $base-q, ") AND ", $term)
+        else $term
+    return
+        <div class="facet-value">
+            <img src="images/{if ($selected) then 'checkmark.gif' else 'checkblank.gif'}" alt="{if ($selected) then 'selected' else ''}"/>
+            <a href="{local:search-href($q, 1)}" title="{if ($selected) then 'Remove this filter' else 'Filter by this value'}">{$label}</a>
+            <span class="facet-count">[{fn:data($value/@count)}]</span>
+        </div>
+};
+
+declare function local:facets() as element()*
+{
+    let $facets :=
+        for $facet in $results/search:facet[search:facet-value]
+        let $name := fn:string($facet/@name)
+        let $values := for $value in $facet/search:facet-value return local:facet-value($name, $value)
+        return
+            <div class="card facet">
+                <p class="facet-name">{$name}</p>
+                {$values[fn:position() le $FACET-SIZE]}
+                {
+                    if (fn:count($values) gt $FACET-SIZE)
+                    then (
+                        <div class="is-hidden" id="facet-{$name}">{$values[fn:position() gt $FACET-SIZE]}</div>,
+                        <a class="facet-toggle" href="#" onclick="return toggleFacet(this, 'facet-{$name}');">more...</a>
+                    )
+                    else ()
+                }
+            </div>
+    return
+        if ($facets)
+        then $facets
+        else <p class="has-text-grey">No filters for this search.</p>
+};
+
+
+(: ---------- page ---------- :)
+
+declare function local:sort-select() as element(div)
+{
+    <div class="select is-info">
+        <select name="sortby" aria-label="Sort by" onchange="this.form.submit()">
+        {
+            for $choice in $cfg:sort-choices
+            return
+                <option value="{$choice/@value}">
+                    {if ($choice/@value eq $sort) then attribute selected {"selected"} else ()}
+                    Sort by {fn:string($choice)}
+                </option>
+        }
+        </select>
+    </div>
+};
+
+declare function local:search-form() as element(form)
+{
+    <form name="form1" method="get" action="index.xqy" class="search-form">
+        {if ($base-q eq "") then <input type="hidden" name="browse" value="1"/> else ()}
+        <div class="field is-grouped is-grouped-multiline">
+            <div class="control is-expanded">
+                <input class="input is-info" type="text" name="q" id="q" value="{$base-q}"
+                       placeholder="Search articles, e.g. cancer therapy" aria-label="Search articles"/>
+            </div>
+            <div class="control">
+                <button class="button is-info" type="submit">Search</button>
+            </div>
+            {
+                if ($base-q ne "")
+                then <div class="control"><a class="button is-light" href="index.xqy">Clear</a></div>
+                else ()
+            }
+            <div class="control">{local:sort-select()}</div>
+        </div>
+    </form>
+};
+
+declare function local:search-page() as element(div)
+{
+    <div class="columns">
+        <div class="column is-one-quarter">{local:facets()}</div>
+        <div class="column">
+            {local:search-form()}
+            {local:search-results()}
+        </div>
+    </div>
 };
 
 xdmp:set-response-content-type("text/html; charset=utf-8"),
-'<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">',
-<html xmlns="http://www.w3.org/1999/xhtml">
-	<head>
-		<title>Search App</title>
-		<link href="css/search.css" rel="stylesheet" type="text/css"/>
-		<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.3/css/bulma.min.css"/>
-		<script src="js/top-songs.js" type="text/javascript"/>
-	</head>
-<body style="background-color:white;">
-	<div class="tabs is-centered is-info">
-		<ul class="is-info" style="background-color:hsl(204, 86%, 53%);">
-			<li class="is-info">
-				<a style="color:white; font-size:22px;" href= "index.xqy">Home</a>
-			</li>
-		</ul>
-	</div>
-	<div style="width: 1400px;" id="wrapper">
-		<div 
-			style="width: 350px; background-color:white;"
-			class="bd-notification is-info"
-			id="leftcol">
-					{local:facets()}
-			<br/>
-		</div>
-
-		<div style="width: 1000px;" class="bd-notification is-info" id="rightcol">
-			<form name="form1" method="get" action="index.xqy">
-				<div class="field has-addons">
-					<div class="control">
-						<input class="input" type="text" name="q" id="q" size="50" value="{$q-text}"/>
-					</div>
-					<div class="control">
-						<button class="button" style="background-color:hsl(204, 86%, 53%); color:white;" type="submit" id="submitbtn" name="submitbtn">
-							search
-						</button>
-						<a style="padding-left:20px;" href="advanced.xqy">advanced search</a>
-					</div>
-				</div>
-				<div id="detaildiv">
-					{local:search-results()} 
-				</div>
-			</form>
-		</div>
-		<div id="footer"></div>
-	</div>
-</body>
-</html>
+if ($uri ne "")
+then layout:page("Article", (), local:article-detail())
+else layout:page(if ($base-q ne "") then $base-q else "Search", "js/facets.js", local:search-page())

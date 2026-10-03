@@ -1,50 +1,59 @@
+xquery version "1.0-ml";
+
+(:~
+ : Turns the advanced search form into a query string for the search API.
+ :)
 module namespace adv = "http://marklogic.com/MLU/search-app/advanced";
 
-
-declare function advanced-q()
+(: A form field as a single trimmed string ("" when it is missing). :)
+declare function adv:field($name as xs:string) as xs:string
 {
-    let $keywords := fn:tokenize(xdmp:get-request-field("keywords")," ")
-    let $type := xdmp:get-request-field("type")
-    let $exclude := fn:tokenize(xdmp:get-request-field("exclude")," ")  
-    let $status := xdmp:get-request-field("status")    
-    let $status := if ($status eq "all")
-                  then ""
-                  else $status
-    let $Title := xdmp:get-request-field("Title")
-    
-    let $keywords := 
-      if($keywords) 
-      then 
-        if($type eq "any")
-        then fn:string-join($keywords," OR ")
-        else if($type eq "phrase")
-             then fn:concat('"',fn:string-join($keywords," "),'"')
-             else $keywords
-      else ()
+    fn:normalize-space(fn:string(xdmp:get-request-field($name)[1]))
+};
 
-    let $exclude := 
-        if($exclude)
-        then fn:string-join((for $i in $exclude 
-                             return fn:concat("-",$i))," ")
-        else ()
-        
+(: The words typed into a form field. :)
+declare function adv:words($name as xs:string) as xs:string*
+{
+    fn:tokenize(adv:field($name), " ")[. ne ""]
+};
+
+(: Builds name:value, quoting the value when it is more than one plain word. :)
+declare function adv:constraint($name as xs:string, $value as xs:string) as xs:string?
+{
+    let $value := fn:normalize-space(fn:translate($value, '"', ' '))
+    return
+        if ($value eq "")
+        then ()
+        else if (fn:matches($value, "\W"))
+        then fn:concat($name, ':"', $value, '"')
+        else fn:concat($name, ":", $value)
+};
+
+declare function adv:advanced-q() as xs:string
+{
+    let $keywords := adv:words("keywords")
+    let $type := adv:field("type")
+    let $status := adv:field("status")
+
+    let $keywords :=
+        if (fn:empty($keywords))
+        then ()
+        else if ($type eq "any")
+        then fn:string-join($keywords, " OR ")
+        else if ($type eq "phrase")
+        then fn:concat('"', fn:translate(fn:string-join($keywords, " "), '"', ''), '"')
+        else fn:string-join($keywords, " ")
+
+    let $exclude :=
+        for $word in adv:words("exclude")
+        return fn:concat("-", $word)
+
     let $status :=
-        if($status)
-        then
-            if (fn:matches($status,"\W"))
-            then fn:concat('Status:"',$status,'"')
-            else fn:concat("Status:",$status)
-        else () 
-          
+        if ($status eq "all")
+        then ()
+        else adv:constraint("Status", $status)
 
-    let $Title :=
-        if($Title)
-        then
-            if (fn:matches($Title,"\W"))
-            then fn:concat('Title:"',$Title,'"')
-            else fn:concat("Title:",$Title)
-        else ()
-         
-    let $q-text := fn:string-join(($keywords,$exclude,$status,$Title)," ")
-    return $q-text
+    let $title := adv:constraint("Title", adv:field("Title"))
+
+    return fn:string-join(($keywords, $exclude, $status, $title), " ")
 };

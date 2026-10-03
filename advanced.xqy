@@ -1,87 +1,95 @@
 xquery version "1.0-ml";
 
-import module namespace search = "http://marklogic.com/appservices/search" at "/MarkLogic/appservices/search/search.xqy";
+(:~
+ : Advanced search form. It submits to index.xqy, which builds the query
+ : with modules/advanced-lib.xqy.
+ :)
 
-declare variable $options-status :=                    
-    <options xmlns="http://marklogic.com/appservices/search">
-        <return-results>false</return-results>
-        <return-facets>true</return-facets>   
-        <constraint name="Status">
-            <range type="xs:string" collation="http://marklogic.com/collation/en/S1" facet="true">
-                <attribute name="Status"/>
-                <element name="MedlineCitation"/>
-                <facet-option>ascending</facet-option>
-            </range>
-        </constraint>            
-    </options>;
-    
-declare function local:list-status-vals()
+import module namespace search = "http://marklogic.com/appservices/search" at "/MarkLogic/appservices/search/search.xqy";
+import module namespace cfg = "http://marklogic.com/MLU/search-app/config" at "modules/search-config.xqy";
+import module namespace layout = "http://marklogic.com/MLU/search-app/layout" at "modules/layout.xqy";
+
+(: Scripts for the journal title autocomplete. :)
+declare variable $SCRIPTS as xs:string+ := (
+    "autocomplete/lib/prototype/prototype.js",
+    "autocomplete/lib/scriptaculous/scriptaculous.js",
+    "autocomplete/src/AutoComplete.js",
+    "autocomplete/src/lib.js"
+);
+
+(: One <option> per status found in the database, with its article count. :)
+declare function local:status-options() as element(option)*
 {
-    for $status in (search:search("", $options-status)//search:facet-value)
-    return (<option value="{fn:data($status/@name)}">{fn:lower-case($status/text())} [{fn:data($status/@count)}]</option>) 
+    for $status in search:search("", $cfg:status-facet-options)//search:facet-value
+    return
+        <option value="{fn:data($status/@name)}">
+            {fn:lower-case(fn:string($status))} [{fn:data($status/@count)}]
+        </option>
+};
+
+declare function local:form() as element(div)
+{
+    <div class="advanced-form">
+        <h1 class="title">Advanced search</h1>
+        <form name="formadv" method="get" action="index.xqy" id="formadv">
+            <input type="hidden" name="advanced" value="advanced"/>
+
+            <div class="field">
+                <label class="label" for="keywords">Search for</label>
+                <div class="field has-addons">
+                    <div class="control is-expanded">
+                        <input class="input is-info" type="text" name="keywords" id="keywords"/>
+                    </div>
+                    <div class="control">
+                        <div class="select is-info">
+                            <select name="type" id="type" aria-label="How to match the words">
+                                <option value="all">all of these words</option>
+                                <option value="any">any of these words</option>
+                                <option value="phrase">exact phrase</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="field">
+                <label class="label" for="exclude">Words to exclude</label>
+                <div class="control">
+                    <input class="input is-info" type="text" name="exclude" id="exclude"/>
+                </div>
+            </div>
+
+            <div class="field">
+                <label class="label" for="status">Status</label>
+                <div class="control">
+                    <div class="select is-info">
+                        <select name="status" id="status">
+                            <option value="all">all</option>
+                            {local:status-options()}
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <div class="field">
+                <label class="label" for="Title">Journal title</label>
+                <div class="control">
+                    <input class="input is-info" type="text" name="Title" id="Title" autocomplete="off"/>
+                </div>
+                <p class="help">Start typing to see matching journal titles.</p>
+            </div>
+
+            <div class="field is-grouped">
+                <div class="control">
+                    <button class="button is-info" type="submit">Search</button>
+                </div>
+                <div class="control">
+                    <a class="button is-light" href="index.xqy">Cancel</a>
+                </div>
+            </div>
+        </form>
+    </div>
 };
 
 xdmp:set-response-content-type("text/html; charset=utf-8"),
-'<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">',
-
-<html xmlns="http://www.w3.org/1999/xhtml">
-<head>
-  <title>Search App</title>
-  <script type="text/javascript" src="/autocomplete/lib/prototype/prototype.js"></script> 
-  <script type="text/javascript" src="/autocomplete/lib/scriptaculous/scriptaculous.js"></script> 
-  <script type="text/javascript" src="/autocomplete/src/AutoComplete.js"></script>
-  <script type="text/javascript" src="/autocomplete/src/lib.js"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.3/css/bulma.min.css"/>
-</head>
-<body>
-  <div class="tabs is-centered is-info">
-      <ul class="is-info" style="background-color:hsl(204, 86%, 53%);">
-        <li class="is-info">
-          <a style="color:white; font-size:22px;" href= "index.xqy">Home</a>
-        </li>
-      </ul>
-  </div>
-  
-  <div style="padding-top:50px;width: 50%;display: block;margin-left: auto;margin-right:auto;">
-    <P style="padding-bottom:30px;"><strong style="font-size:30px;">Advanced search option</strong></P>
-    <form name="formadv" method="get" action="index.xqy" id="formadv">
-      <input type="hidden" name="advanced" value="advanced"/>
-      <label><strong>Search for:</strong></label>
-      <div style="white-space: nowrap;">
-        <input style="display: inline-block;" class="input is-info" type="text" name="keywords" id="keywords" size="40"/>
-        <div style="padding-left:10px;" class="select is-info">
-          <select style="display: inline-block; paddin-left:10px;" class="is-info" name="type" id="type">
-            <option value="all">all of these words</option>
-              <option value="any">any of these words</option>
-              <option value="phrase">exact phrase</option>
-          </select>
-        </div>
-      </div>
-    <br>
-      <label><strong>Words to exclude: </strong></label>
-      <input class="input is-info" type="text" name="exclude" id="exclude" size="40"/>
-    </br>
-
-    <br>
-      <p><strong>Status: </strong></p>
-      <div style="paddin-left:10px;" class="select is-info">
-        <select class="is-info" name="status" id="Status">
-          <option value="all">all</option>
-              {local:list-status-vals()}
-        </select>
-      </div>
-    </br>
-    
-    <br>
-      <label><strong>Journal title: </strong></label>
-      <input class="input is-info" type="text" name="Title" id="Title" size="40" autocomplete="off"/>
-    </br>
-
-    <br>
-      <button class="button" style="background-color:hsl(204, 86%, 53%); color:white;" type="submit" id="submitbtn" name="submitbtn">Apply</button>
-    </br>
-  </form>
-<div id="footer"></div>
-</div>
-</body>
-</html>
+layout:page("Advanced search", $SCRIPTS, local:form())
